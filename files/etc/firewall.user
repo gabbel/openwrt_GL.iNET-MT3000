@@ -1,0 +1,24 @@
+#!/bin/sh
+# This file is interpreted as a shell script.
+# Put your custom nftables rules here, and they will be executed with each firewall (re-)start
+# Internal uci firewall chains are flushed and recreated on reload, so
+# put custom rules into the root chains, e.g. input or forward, or into the
+# special user chains, e.g. input_wan_rule or postrouting_lan_rule.
+
+# when within nftables no chain "forwarding_rule" exists, then do.
+if (! nft list chain inet fw4 forwarding_rule); then
+	# add new chain named forwarding_rule
+	nft add chain inet fw4 forwarding_rule
+fi
+
+# when within nftables chain "forward" no "jump forwarding_rule" exists, then add one.
+if (! nft list chain inet fw4 forward | grep 'jump forwarding_rule'); then
+        # add a new rule to chain inet fw4 accept_to_lan in order to jump to forwarding_rule
+        nft insert rule inet fw4 forward jump forwarding_rule
+fi
+
+# when tun0 is down, reject traffic.
+if (! ip a s tun0 up); then
+        # add rule within chain forwarding_rule to reject all traffic
+        nft add rule inet fw4 forwarding_rule reject
+fi

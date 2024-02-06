@@ -1,0 +1,290 @@
+# To get an output of your current nftables configuration run:
+
+# This will Display the default nft table prior to adding any changes:
+root@OpenWrt:~# nft list tables
+table inet fw4
+
+
+root@OpenWrt:~# nft list table inet fw4
+table inet fw4 {
+        chain input {
+                type filter hook input priority filter; policy drop;
+                iifname "lo" accept comment "!fw4: Accept traffic from loopback"
+                ct state established,related accept comment "!fw4: Allow inbound established and related flows"
+                tcp flags syn / fin,syn,rst,ack jump syn_flood comment "!fw4: Rate limit TCP syn packets"
+                iifname "br-lan" jump input_lan comment "!fw4: Handle lan IPv4/IPv6 input traffic"
+                iifname "eth0" jump input_wan comment "!fw4: Handle wan IPv4/IPv6 input traffic"
+                iifname "tun0" jump input_vpnfirewall comment "!fw4: Handle vpnfirewall IPv4/IPv6 input traffic"
+                jump handle_reject
+        }
+
+        chain forward {
+                type filter hook forward priority filter; policy drop;
+                ct state established,related accept comment "!fw4: Allow forwarded established and related flows"
+                iifname "br-lan" jump forward_lan comment "!fw4: Handle lan IPv4/IPv6 forward traffic"
+                iifname "eth0" jump forward_wan comment "!fw4: Handle wan IPv4/IPv6 forward traffic"
+                iifname "tun0" jump forward_vpnfirewall comment "!fw4: Handle vpnfirewall IPv4/IPv6 forward traffic"
+                jump handle_reject
+        }
+
+        chain output {
+                type filter hook output priority filter; policy accept;
+                oifname "lo" accept comment "!fw4: Accept traffic towards loopback"
+                ct state established,related accept comment "!fw4: Allow outbound established and related flows"
+                oifname "br-lan" jump output_lan comment "!fw4: Handle lan IPv4/IPv6 output traffic"
+                oifname "eth0" jump output_wan comment "!fw4: Handle wan IPv4/IPv6 output traffic"
+                oifname "tun0" jump output_vpnfirewall comment "!fw4: Handle vpnfirewall IPv4/IPv6 output traffic"
+        }
+
+        chain prerouting {
+                type filter hook prerouting priority filter; policy accept;
+                iifname "br-lan" jump helper_lan comment "!fw4: Handle lan IPv4/IPv6 helper assignment"
+        }
+
+        chain handle_reject {
+                meta l4proto tcp reject with tcp reset comment "!fw4: Reject TCP traffic"
+                reject comment "!fw4: Reject any other traffic"
+        }
+
+        chain syn_flood {
+                limit rate 25/second burst 50 packets return comment "!fw4: Accept SYN packets below rate-limit"
+                drop comment "!fw4: Drop excess packets"
+        }
+
+        chain input_lan {
+                jump accept_from_lan
+        }
+
+        chain output_lan {
+                jump accept_to_lan
+        }
+
+        chain forward_lan {
+                jump accept_to_wan comment "!fw4: Accept lan to wan forwarding"
+                jump accept_to_vpnfirewall comment "!fw4: Accept lan to vpnfirewall forwarding"
+                jump accept_to_lan
+        }
+
+        chain helper_lan {
+        }
+
+        chain accept_from_lan {
+                iifname "br-lan" counter packets 131 bytes 11048 accept comment "!fw4: accept lan IPv4/IPv6 traffic"
+        }
+
+        chain accept_to_lan {
+                oifname "br-lan" counter packets 55 bytes 7816 accept comment "!fw4: accept lan IPv4/IPv6 traffic"
+        }
+
+        chain input_wan {
+                meta nfproto ipv4 udp dport 68 counter packets 0 bytes 0 accept comment "!fw4: Allow-DHCP-Renew"
+                icmp type echo-request counter packets 0 bytes 0 accept comment "!fw4: Allow-Ping"
+                meta nfproto ipv4 meta l4proto igmp counter packets 0 bytes 0 accept comment "!fw4: Allow-IGMP"
+                meta nfproto ipv6 udp dport 546 counter packets 16 bytes 2968 accept comment "!fw4: Allow-DHCPv6"
+                ip6 saddr fe80::/10 icmpv6 type . icmpv6 code { mld-listener-query . no-route, mld-listener-report . no-route, mld-listener-done . no-route, mld2-listener-report . no-route } counter packets 0 bytes 0 accept comment "!fw4: Allow-MLD"
+                icmpv6 type { destination-unreachable, time-exceeded, echo-request, echo-reply, nd-router-solicit, nd-router-advert } limit rate 1000/second counter packets 9 bytes 1888 accept comment "!fw4: Allow-ICMPv6-Input"
+                icmpv6 type . icmpv6 code { packet-too-big . no-route, parameter-problem . no-route, nd-neighbor-solicit . no-route, nd-neighbor-advert . no-route, parameter-problem . admin-prohibited } limit rate 1000/second counter packets 25 bytes 1688 accept comment "!fw4: Allow-ICMPv6-Input"
+                jump reject_from_wan
+        }
+
+        chain output_wan {
+                jump accept_to_wan
+        }
+
+        chain forward_wan {
+                icmpv6 type { destination-unreachable, time-exceeded, echo-request, echo-reply } limit rate 1000/second counter packets 0 bytes 0 accept comment "!fw4: Allow-ICMPv6-Forward"
+                icmpv6 type . icmpv6 code { packet-too-big . no-route, parameter-problem . no-route, parameter-problem . admin-prohibited } limit rate 1000/second counter packets 0 bytes 0 accept comment "!fw4: Allow-ICMPv6-Forward"
+                meta l4proto esp counter packets 0 bytes 0 jump accept_to_lan comment "!fw4: Allow-IPSec-ESP"
+                udp dport 500 counter packets 0 bytes 0 jump accept_to_lan comment "!fw4: Allow-ISAKMP"
+                jump reject_to_wan
+        }
+
+        chain accept_to_wan {
+                meta nfproto ipv4 oifname "eth0" ct state invalid counter packets 0 bytes 0 drop comment "!fw4: Prevent NAT leakage"
+                oifname "eth0" counter packets 108 bytes 11725 accept comment "!fw4: accept wan IPv4/IPv6 traffic"
+        }
+
+        chain reject_from_wan {
+                iifname "eth0" counter packets 27 bytes 2246 jump handle_reject comment "!fw4: reject wan IPv4/IPv6 traffic"
+        }
+
+        chain reject_to_wan {
+                oifname "eth0" counter packets 0 bytes 0 jump handle_reject comment "!fw4: reject wan IPv4/IPv6 traffic"
+        }
+
+        chain input_vpnfirewall {
+                jump reject_from_vpnfirewall
+        }
+
+        chain output_vpnfirewall {
+                jump accept_to_vpnfirewall
+        }
+
+        chain forward_vpnfirewall {
+                jump reject_to_vpnfirewall
+        }
+
+        chain accept_to_vpnfirewall {
+                meta nfproto ipv4 oifname "tun0" ct state invalid counter packets 0 bytes 0 drop comment "!fw4: Prevent NAT leakage"
+                oifname "tun0" counter packets 61 bytes 4522 accept comment "!fw4: accept vpnfirewall IPv4/IPv6 traffic"
+        }
+
+        chain reject_from_vpnfirewall {
+                iifname "tun0" counter packets 0 bytes 0 jump handle_reject comment "!fw4: reject vpnfirewall IPv4/IPv6 traffic"
+        }
+
+        chain reject_to_vpnfirewall {
+                oifname "tun0" counter packets 0 bytes 0 jump handle_reject comment "!fw4: reject vpnfirewall IPv4/IPv6 traffic"
+        }
+
+        chain dstnat {
+                type nat hook prerouting priority dstnat; policy accept;
+        }
+
+        chain srcnat {
+                type nat hook postrouting priority srcnat; policy accept;
+                oifname "eth0" jump srcnat_wan comment "!fw4: Handle wan IPv4/IPv6 srcnat traffic"
+                oifname "tun0" jump srcnat_vpnfirewall comment "!fw4: Handle vpnfirewall IPv4/IPv6 srcnat traffic"
+        }
+
+        chain srcnat_wan {
+                meta nfproto ipv4 masquerade comment "!fw4: Masquerade IPv4 wan traffic"
+        }
+
+        chain srcnat_vpnfirewall {
+                meta nfproto ipv4 masquerade comment "!fw4: Masquerade IPv4 vpnfirewall traffic"
+        }
+
+        chain raw_prerouting {
+                type filter hook prerouting priority raw; policy accept;
+        }
+
+        chain raw_output {
+                type filter hook output priority raw; policy accept;
+        }
+
+        chain mangle_prerouting {
+                type filter hook prerouting priority mangle; policy accept;
+        }
+
+        chain mangle_postrouting {
+                type filter hook postrouting priority mangle; policy accept;
+        }
+
+        chain mangle_input {
+                type filter hook input priority mangle; policy accept;
+        }
+
+        chain mangle_output {
+                type route hook output priority mangle; policy accept;
+        }
+
+        chain mangle_forward {
+                type filter hook forward priority mangle; policy accept;
+                iifname "eth0" tcp flags syn tcp option maxseg size set rt mtu comment "!fw4: Zone wan IPv4/IPv6 ingress MTU fixing"
+                oifname "eth0" tcp flags syn tcp option maxseg size set rt mtu comment "!fw4: Zone wan IPv4/IPv6 egress MTU fixing"
+                iifname "tun0" tcp flags syn tcp option maxseg size set rt mtu comment "!fw4: Zone vpnfirewall IPv4/IPv6 ingress MTU fixing"
+                oifname "tun0" tcp flags syn tcp option maxseg size set rt mtu comment "!fw4: Zone vpnfirewall IPv4/IPv6 egress MTU fixing"
+        }
+
+}
+"
+
+
+# In order to prenvent traffic of beeing leaked, define your custom firewall rules.
+#Custom firewall rules "/etc/firewall.user"
+"
+#!/bin/sh
+# This file is interpreted as a shell script.
+# Put your custom nftables rules here, and they will be executed with each firewall (re-)start
+# Internal uci firewall chains are flushed and recreated on reload, so
+# put custom rules into the root chains, e.g. input or forward, or into the
+# special user chains, e.g. input_wan_rule or postrouting_lan_rule.
+
+# if within nftables no chain "forwarding_rule" exists, then do.
+if (! nft list chain inet fw4 forwarding_rule); then
+	# add new chain named forwarding_rule
+	nft add chain inet fw4 forwarding_rule
+fi
+
+# if within nftables chain "forward" no "jump forwarding_rule" exists, then insert one.
+if (! nft list chain inet fw4 forward | grep 'jump forwarding_rule'); then
+        # add a new rule to chain inet fw4 accept_to_lan in order to jump to forwarding_rule
+        nft insert rule inet fw4 forward jump forwarding_rule
+fi
+
+# if tun0 is down, reject traffic.
+if (! ip a s tun0 up); then
+        # add rule within chain forwarding_rule to reject all traffic
+        nft add rule inet fw4 forwarding_rule reject
+fi
+"
+
+# make it executable
+chmod +x /etc/firewall.user
+
+# uci commands to add config section
+uci add firewall include
+uci set firewall.@include[-1].enabled=1
+uci set firewall.@include[-1].type='script'
+uci set firewall.@include[-1].path='/etc/firewall.user'
+uci set firewall.@include[-1].fw4_compatible=1
+uci commit firewall
+
+# what should be added to "/etc/config/firewall" file.
+"
+config include
+        option enabled '1'
+        option type 'script'
+        option path '/etc/firewall.user'
+        option fw4_compatible '1'
+"
+
+# contents of /etc/rc.local
+
+"
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+/etc/openvpn/reconnect.sh &
+exit 0
+"
+
+# contents of /etc/openvpn/reconnect.sh
+"
+#!/bin/sh
+n=10
+while sleep 60; do
+t=$(ping -c $n 8.8.8.8 | grep -o -E '[0-9]+ packets r' | grep -o -E '[0-9]+')
+if [ "$t" -eq 0 ]; then
+/etc/init.d/openvpn restart
+fi
+done
+"
+
+
+# Hotplug event script
+# contents of "/etc/hotplug.d/iface/98-prevent-leak"
+"
+#!/bin/sh
+
+# if action ifup is triggered and interface tun0 is up and the nftables chain "forwarding_rule" contains text "reject", then flush that chain in order to allow traffic.
+if [ "$ACTION" = ifup ] && (ip a s tun0 up) && (nft list chain inet fw4 forwarding_rule | grep -q 'reject'); then
+    nft flush chain inet fw4 forwarding_rule
+fi
+
+
+# if action ifdown is triggered and interface tun0 is not up and the nftables chain "forwarding_rule" does not contain text "reject", then add a rule to that chain in order to reject all traffic.
+if [ "$ACTION" = ifdown ] && (! ip a s tun0 up) && (! nft list chain inet fw4 forwarding_rule | grep -q 'reject'); then
+   nft add rule inet fw4 forwarding_rule reject
+fi
+"
+
+# Run these commands within shell in order to keep your custom configurations when running sysupgrades of openwrt.
+echo "/etc/openvpn/" >> /etc/sysupgrade.conf
+echo "/etc/firewall.user" >> /etc/sysupgrade.conf
+echo "/etc/config/firewall" >> /etc/sysupgrade.conf
+echo "/etc/hotplug.d/iface/98-prevent-leak" >> /etc/sysupgrade.conf
+echo "/etc/rc.local" >> /etc/sysupgrade.conf
+
+# restart the firewall
+/etc/init.d/firewall restart

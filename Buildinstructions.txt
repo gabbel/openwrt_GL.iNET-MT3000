@@ -1,0 +1,133 @@
+# Image Builder:
+
+# How to use the image Builder
+https://openwrt.org/docs/guide-user/additional-software/imagebuilder
+
+# Debian and Ubuntu
+sudo apt install build-essential libncurses-dev zlib1g-dev gawk git \
+gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils
+
+# Get the Image Builder Package of the Current Version
+wget https://downloads.openwrt.org/releases/23.05.2/targets/mediatek/filogic/openwrt-imagebuilder-23.05.2-mediatek-filogic.Linux-x86_64.tar.xz
+
+# Unpack the Image Builder Package
+tar xJf openwrt-imagebuilder-23.05.2-mediatek-filogic.Linux-x86_64.tar.xz
+
+# Change directory
+
+
+# List Profiles and default packages
+make info
+
+# Device info in: https://downloads.openwrt.org/releases/23.05.2/targets/mediatek/filogic/profiles.json
+
+# Make the Image
+make image \
+    PROFILE=glinet_gl-mt3000 \
+    PACKAGES=" \
+	kmod-macvlan \
+	usbutils \
+	wpad-wolfssl \
+	openvpn-openssl \
+	ip-full \
+	luci-app-openvpn \
+	ca-certificates \
+	dnsmasq-full \
+	getdns \
+	kmod-dax \
+	kmod-dm \
+	kmod-dnsresolver \
+	kmod-lib-crc16 \
+	kmod-lib-textsearch \
+	kmod-mtdoops \
+	kmod-nf-conntrack-netlink \
+	kmod-sched-core \
+	kmod-tun \
+	kmod-udptunnel4 \
+	kmod-udptunnel6 \
+	luci luci-mod-admin-full luci-ssl \
+	swconfig \
+	libsensors lm-sensors \
+	kmod-hwmon-core \
+	collectd collectd-mod-sensors luci-app-statistics \
+	-wpad -wpad-basic -wpad-mini -ppp -ppp-mod-pppoe -kmod-pppoe -wpad-basic-wolfssl -wpad-basic-mbedtls -dnsmasq \
+	" \
+	FILES=files/
+
+
+# Make Image according to the following reference
+# https://openwrt.org/toh/gl.inet/gl-mt3000
+
+# Additional				
+kmod-macvlan						VLAN Support			Kernel modules/
+usbutils
+
+# WLAN
+wpad-wolfssl
+
+# Openvpn
+openvpn-openssl
+ip-full
+luci-app-openvpn
+
+# packages that are included within the official Firmware from openwrt, but that are missing when using the image builder
+#
+kmod-crypto-acompress 	Asynchronous Compression operations
+kmod-lib-lzo 			Kernel module for LZO compression/decompression support
+px5g-mbedtls 			Px5g is a tiny standalone X.509 certificate generator.\\ It suitable to create key files and certificates in DER and PEM format for use with stunnel, uhttpd and others.
+firewall4				This package provides an nftables-based implementation of the UCI firewall\\ sharing the same configuration format.
+
+
+# packages that are included by manufacturer, that are essential but missing within official openwrt image.
+#
+ca-certificates				System CA certificates
+dnsmasq-full				It is intended to provide coupled DNS and DHCP service to a LAN.\\ \\ This is a fully configurable variant with DHCPv4, DHCPv6, DNSSEC, Authoritative DNS\\ and IPset, Conntrack support & NO_ID enabled by default.
+getdns						This package contains the getdns library (libgetdns).\\ This package also contains the "getdns_query" command line wrapper for getdns exposing the features of this implementation (both in the official API and the additional API functions).
+(firewall					This package provides a config-compatible C implementation of the UCI firewall.)
+kmod-dax					DAX: direct access to differentiated memory\\ \\
+kmod-dm						Kernel module necessary for LVM2 support\\ \\
+kmod-dnsresolver			In-kernel DNS Resolver\\ \\
+kmod-lib-crc16				Kernel module for CRC16 support\\ \\
+kmod-lib-textsearch			Textsearch support\\ \\
+kmod-mtdoops				Kernel modules for Log panic/oops to an MTD buffer\\ \\
+kmod-nf-conntrack-netlink 	Kernel modules support for a netlink-based connection tracking\\ userspace interface\\ \\
+kmod-sched-core				Core kernel scheduler support for IP traffic\\ \\
+kmod-tun					Kernel support for the TUN/TAP tunneling device\\ \\
+kmod-udptunnel4				IPv4 UDP tunneling support\\ \\
+kmod-udptunnel6				IPv6 UDP tunneling support\\ \\
+
+# Webinterface
+luci luci-mod-admin-full luci-ssl
+
+# Switch
+swconfig 				Switch configuration utility
+
+# Temperature Monitoring
+libsensors lm-sensors
+kmod-hwmon-core
+
+# Sensor Data
+collectd collectd-mod-sensors luci-app-statistics
+
+
+# Remove Packages not needed for this build
+-wpad -wpad-basic -wpad-mini -ppp -ppp-mod-pppoe -kmod-pppoe -wpad-basic-wolfssl -wpad-basic-mbedtls -dnsmasq
+
+
+
+
+
+
+
+# --------------------------------------------------------
+# how to flash
+
+
+# Check the free RAM 
+free
+ 
+# Upload firmware
+scp firmware_image.bin root@openwrt.lan:/tmp
+ 
+# Flash firmware
+sysupgrade -v -n /tmp/firmware_image.bin
